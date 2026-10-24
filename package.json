@@ -1,0 +1,35 @@
+{
+  "name": "shado",
+  "version": "1.0.0",
+  "description": "SHADO — Premium Real-Time Chat Application",
+  "private": true,
+  "scripts": {
+    "clean:port": "node server/src/scripts/cleanPort.js",
+    "prestart": "node server/src/scripts/cleanPort.js",
+    "predev": "node server/src/scripts/cleanPort.js",
+    "start": "node server/src/server.js",
+    "serve": "node server/src/server.js",
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"magenta.bold,cyan.bold\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "db:setup": "cd server && npm run db:setup",
+    "build": "cd client && npm run build",
+    "test": "node server/src/scripts/testE2E.js",
+    "install:all": "npm --prefix server install && npm --prefix client install"
+  },
+  "keywords": [
+    "chat",
+    "real-time",
+    "socket.io",
+    "react",
+    "prisma",
+    "postgresql",
+    "framer-motion",
+    "tailwindcss"
+  ],
+  "author": "SHADO Engineering",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

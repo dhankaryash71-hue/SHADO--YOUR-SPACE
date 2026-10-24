@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='100' y2='100'><stop offset='0%25' stop-color='%23c084fc'/><stop offset='100%25' stop-color='%2338bdf8'/></linearGradient></defs><rect width='100' height='100' rx='25' fill='%2308090d'/><path d='M68 24 C56 18 38 20 32 28 C26 36 32 44 46 47 C62 50 68 56 64 68 C60 80 44 82 30 76 L24 86 C40 94 66 92 74 78 C82 64 72 54 58 50 C44 46 38 42 42 34 C46 26 58 24 66 30 Z' fill='url(%23g)'/></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="description" content="SHADO — Premium Real-Time Chat Application. Your People. Your Space." />
+    <meta name="theme-color" content="#07080c" />
+    <title>SHADO — Your People. Your Space.</title>
+    <script>
+      // Prevent theme flash before React mounts
+      (function() {
+        try {
+          const theme = localStorage.getItem('shado_theme') || 'dark';
+          const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('light');
+          } else {
+            document.documentElement.classList.add('light');
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-[#f8fafc] dark:bg-[#07080c] text-slate-800 dark:text-slate-100 antialiased selection:bg-violet-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
