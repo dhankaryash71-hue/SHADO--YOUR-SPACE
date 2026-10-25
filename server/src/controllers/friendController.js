@@ -1,5 +1,5 @@
 import prisma from '../config/db.js';
-import { getIO } from '../socket/index.js';
+import { getIO, isUserOnline } from '../socket/index.js';
 
 export const sendRequest = async (req, res, next) => {
   try {
@@ -397,6 +397,7 @@ export const getFriends = async (req, res, next) => {
       const friendData = isSender ? req.receiver : req.sender;
       return {
         ...friendData,
+        isOnline: isUserOnline(friendData.id),
         friendshipId: req.id,
         connectedAt: req.updatedAt,
       };

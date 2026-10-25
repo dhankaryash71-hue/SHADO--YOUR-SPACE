@@ -13,10 +13,14 @@ import {
   Moon,
   Sun,
   Laptop,
+  Bell,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
+import { useSocket } from '../context/SocketContext';
 import { userService } from '../services/userService';
 import Avatar from './Avatar';
 
@@ -26,6 +30,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   const { user, updateUser, logout } = useAuth();
   const { theme, changeTheme } = useTheme();
   const { addToast } = useToast();
+  const { isSoundMuted, toggleSoundMute, playNotificationSound } = useSocket();
 
   const [activeTab, setActiveTab] = useState('profile');
   const [fullName, setFullName] = useState(user?.fullName || '');
@@ -157,6 +162,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
             <nav className="space-y-1">
               {[
                 { id: 'profile', label: 'My Profile', icon: User },
+                { id: 'notifications', label: 'Sound & Alerts', icon: Bell },
                 { id: 'appearance', label: 'Appearance', icon: Palette },
                 { id: 'security', label: 'Security', icon: Lock },
                 { id: 'privacy', label: 'Privacy & Safety', icon: Shield },
@@ -305,6 +311,67 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* Sound & Notifications Tab */}
+            {activeTab === 'notifications' && (
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-white">Sound & Notifications</h4>
+                  <p className="text-xs text-slate-500">Manage incoming message chimes and notification behavior.</p>
+                </div>
+
+                <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`p-2.5 rounded-xl shrink-0 ${
+                        isSoundMuted ? 'bg-amber-500/10 text-amber-500' : 'bg-violet-500/10 text-violet-500'
+                      }`}
+                    >
+                      {isSoundMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 dark:text-white">
+                        Incoming Message Chime
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Play a gentle, recognizable two-tone acoustic chime when receiving messages.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => playNotificationSound(true)}
+                      className="px-2.5 py-1 text-[11px] font-semibold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Test chime sound"
+                    >
+                      Test Chime
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleSoundMute();
+                        addToast(
+                          isSoundMuted ? 'Notification sounds enabled' : 'Notification sounds muted',
+                          'info'
+                        );
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        !isSoundMuted ? 'bg-violet-600' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                      aria-label="Toggle sound notifications"
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          !isSoundMuted ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Appearance Tab */}

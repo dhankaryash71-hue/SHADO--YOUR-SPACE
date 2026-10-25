@@ -51,8 +51,8 @@ export const Avatar = ({
 
       {showStatus && isOnline && (
         <span
-          className={`absolute bottom-0 right-0 ${currentSize.dot} rounded-full bg-emerald-500 border-white dark:border-[#131622] ring-1 ring-emerald-500/50 animate-pulse`}
-          title="Online"
+          className={`absolute bottom-0 right-0 ${currentSize.dot} rounded-full bg-emerald-500 border-2 border-white dark:border-[#0c0e17] ring-1 ring-emerald-400/60 shadow-sm z-10`}
+          title="Active now"
         />
       )}
     </div>

@@ -78,7 +78,12 @@ export const getConversations = async (req, res, next) => {
           id: conv.id,
           type: conv.type,
           name: conv.name || (recipient ? recipient.fullName : 'Direct Chat'),
-          recipient,
+          recipient: recipient
+            ? {
+                ...recipient,
+                isOnline: isUserOnline(recipient.id),
+              }
+            : null,
           lastMessage,
           unreadCount,
           disappearingTimer: conv.disappearingTimer || 'OFF',
@@ -159,7 +164,10 @@ export const getOrCreateConversation = async (req, res, next) => {
         type: conversation.type,
         disappearingTimer: conversation.disappearingTimer || 'OFF',
         clearedAt: membership?.clearedAt || null,
-        recipient,
+        recipient: {
+          ...recipient,
+          isOnline: isUserOnline(recipient.id),
+        },
         createdAt: conversation.createdAt,
       },
     });

@@ -120,13 +120,18 @@ const runTest = async () => {
     });
     console.log('✓ Device B connected to socket.');
 
-    // Give server catch-up 400ms to process pending messages
-    await sleep(400);
+    // Wait for server catch-up to process pending messages (accommodating remote Neon DB round trips)
+    let dbMsg1Delivered = null;
+    for (let i = 0; i < 20; i++) {
+      await sleep(200);
+      dbMsg1Delivered = await prisma.message.findUnique({ where: { id: msg1.id } });
+      if (dbMsg1Delivered && dbMsg1Delivered.status === 'DELIVERED') {
+        break;
+      }
+    }
 
-    // Verify Message 1 in DB is now DELIVERED
-    const dbMsg1Delivered = await prisma.message.findUnique({ where: { id: msg1.id } });
-    console.log(`✓ Database Message 1 status after Device B online: ${dbMsg1Delivered.status}`);
-    if (dbMsg1Delivered.status !== 'DELIVERED' || !dbMsg1Delivered.deliveredAt) {
+    console.log(`✓ Database Message 1 status after Device B online: ${dbMsg1Delivered?.status}`);
+    if (!dbMsg1Delivered || dbMsg1Delivered.status !== 'DELIVERED' || !dbMsg1Delivered.deliveredAt) {
       throw new Error('Message 1 was not updated to DELIVERED upon recipient connection');
     }
     console.log('  deliveredAt timestamp:', dbMsg1Delivered.deliveredAt);
@@ -166,13 +171,21 @@ const runTest = async () => {
 
     // Device B joins socket room
     socketB.emit('conversation:join', { conversationId: convId });
-    await sleep(300);
 
-    // Verify in Database that both Message 1 and Message 2 are now READ
-    const checkDbMsg1 = await prisma.message.findUnique({ where: { id: msg1.id } });
-    const checkDbMsg2 = await prisma.message.findUnique({ where: { id: msg2.id } });
-    console.log(`✓ Database Message 1 status: ${checkDbMsg1.status}, readAt: ${checkDbMsg1.readAt}`);
-    console.log(`✓ Database Message 2 status: ${checkDbMsg2.status}, readAt: ${checkDbMsg2.readAt}`);
+    // Poll until both messages are updated to READ in database
+    let checkDbMsg1 = null;
+    let checkDbMsg2 = null;
+    for (let i = 0; i < 20; i++) {
+      await sleep(200);
+      checkDbMsg1 = await prisma.message.findUnique({ where: { id: msg1.id } });
+      checkDbMsg2 = await prisma.message.findUnique({ where: { id: msg2.id } });
+      if (checkDbMsg1?.status === 'READ' && checkDbMsg2?.status === 'READ') {
+        break;
+      }
+    }
+
+    console.log(`✓ Database Message 1 status: ${checkDbMsg1?.status}, readAt: ${checkDbMsg1?.readAt}`);
+    console.log(`✓ Database Message 2 status: ${checkDbMsg2?.status}, readAt: ${checkDbMsg2?.readAt}`);
 
     if (checkDbMsg1.status !== 'READ' || !checkDbMsg1.readAt) {
       throw new Error('Message 1 was not updated to READ with read timestamp');

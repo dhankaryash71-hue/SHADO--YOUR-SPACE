@@ -1,10 +1,10 @@
-// SHADO Database Schema - SQLite (Zero-config local development fallback)
+// SHADO Database Schema - PostgreSQL (Production & Standard)
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -22,6 +22,7 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  // Relationships
   sentRequests     FriendRequest[]      @relation("SentFriendRequests")
   receivedRequests FriendRequest[]      @relation("ReceivedFriendRequests")
   memberships      ConversationMember[]

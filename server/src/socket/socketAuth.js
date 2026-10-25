@@ -4,9 +4,10 @@ import prisma from '../config/db.js';
 export const socketAuthMiddleware = async (socket, next) => {
   try {
     let token = socket.handshake.auth?.token;
+    let decoded = token ? verifyToken(token) : null;
 
-    // Check handshake cookies if token not in auth payload
-    if (!token && socket.handshake.headers?.cookie) {
+    // Check handshake cookies if token not in auth payload or failed verification
+    if ((!decoded || !decoded.userId) && socket.handshake.headers?.cookie) {
       const cookieHeader = socket.handshake.headers.cookie;
       const cookies = Object.fromEntries(
         cookieHeader.split(';').map((c) => {
@@ -14,16 +15,18 @@ export const socketAuthMiddleware = async (socket, next) => {
           return [key, decodeURIComponent(v.join('='))];
         })
       );
-      token = cookies.shado_token;
+      if (cookies.shado_token) {
+        const cookieToken = cookies.shado_token;
+        const cookieDecoded = verifyToken(cookieToken);
+        if (cookieDecoded && cookieDecoded.userId) {
+          token = cookieToken;
+          decoded = cookieDecoded;
+        }
+      }
     }
 
-    if (!token) {
-      return next(new Error('Authentication error: Missing token'));
-    }
-
-    const decoded = verifyToken(token);
-    if (!decoded || !decoded.userId) {
-      return next(new Error('Authentication error: Invalid or expired token'));
+    if (!token || !decoded || !decoded.userId) {
+      return next(new Error('Authentication error: Missing or invalid token'));
     }
 
     const user = await prisma.user.findUnique({

@@ -4,10 +4,12 @@ import { Search, UserPlus, Check, Clock, MessageSquare, X, ShieldAlert } from 'l
 import { userService } from '../services/userService';
 import { friendService } from '../services/friendService';
 import { useToast } from '../context/ToastContext';
+import { useSocket } from '../context/SocketContext';
 import Avatar from './Avatar';
 import confetti from 'canvas-confetti';
 
 export const UserSearchModal = ({ isOpen, onClose, onStartChat }) => {
+  const { isUserOnline } = useSocket();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -159,7 +161,7 @@ export const UserSearchModal = ({ isOpen, onClose, onStartChat }) => {
                       src={targetUser.avatarUrl}
                       name={targetUser.fullName}
                       size="md"
-                      isOnline={targetUser.isOnline}
+                      isOnline={isUserOnline(targetUser.id) || targetUser.isOnline}
                     />
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">

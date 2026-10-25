@@ -2,6 +2,7 @@ import prisma from '../config/db.js';
 import { hashPassword, comparePassword } from '../utils/password.js';
 import { validatePassword, isValidUsername } from '../utils/validators.js';
 import { generateToken, setAuthCookie } from '../utils/jwt.js';
+import { isUserOnline } from '../socket/index.js';
 
 export const searchUsers = async (req, res, next) => {
   try {
@@ -84,6 +85,7 @@ export const searchUsers = async (req, res, next) => {
 
         return {
           ...user,
+          isOnline: isUserOnline(user.id),
           relationship,
           requestId,
           isBlocked: !!blocked,

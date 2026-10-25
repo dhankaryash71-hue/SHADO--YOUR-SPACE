@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, Clock, UserCheck, Inbox, ArrowUpRight } from 'lucide-react';
 import { friendService } from '../services/friendService';
 import { useToast } from '../context/ToastContext';
+import { useSocket } from '../context/SocketContext';
 import Avatar from './Avatar';
 import confetti from 'canvas-confetti';
 
 export const FriendRequestsModal = ({ isOpen, onClose, onFriendAccepted }) => {
+  const { isUserOnline } = useSocket();
   const [activeTab, setActiveTab] = useState('incoming'); // 'incoming' | 'outgoing'
   const [incoming, setIncoming] = useState([]);
   const [outgoing, setOutgoing] = useState([]);
@@ -177,7 +179,7 @@ export const FriendRequestsModal = ({ isOpen, onClose, onFriendAccepted }) => {
                         src={req.sender?.avatarUrl}
                         name={req.sender?.fullName}
                         size="md"
-                        isOnline={req.sender?.isOnline}
+                        isOnline={isUserOnline(req.sender?.id) || req.sender?.isOnline}
                       />
                       <div className="min-w-0">
                         <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
@@ -226,7 +228,7 @@ export const FriendRequestsModal = ({ isOpen, onClose, onFriendAccepted }) => {
                       src={req.receiver?.avatarUrl}
                       name={req.receiver?.fullName}
                       size="md"
-                      isOnline={req.receiver?.isOnline}
+                      isOnline={isUserOnline(req.receiver?.id) || req.receiver?.isOnline}
                     />
                     <div className="min-w-0">
                       <div className="text-sm font-bold text-slate-900 dark:text-white truncate">

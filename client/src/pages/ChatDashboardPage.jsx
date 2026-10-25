@@ -20,6 +20,9 @@ import {
   MoreVertical,
   Trash2,
   X,
+  Volume2,
+  VolumeX,
+  BellOff,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -46,17 +49,44 @@ const TIMER_LABELS = {
   '90d': '90 days',
 };
 
+const formatLastSeen = (timestamp) => {
+  if (!timestamp) return 'Offline';
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return 'Offline';
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHours = Math.floor(diffMin / 60);
+
+  if (diffSec < 45) return 'Active just now';
+  if (diffMin < 60) return `Active ${diffMin}m ago`;
+  if (diffHours < 24 && date.toDateString() === now.toDateString()) {
+    return `Last seen today at ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return `Last seen yesterday at ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  return `Last seen ${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+};
+
 export const ChatDashboardPage = () => {
   const { user } = useAuth();
   const {
     socket,
     isUserOnline,
+    onlineUserIds,
     joinConversation,
     leaveConversation,
     markMessagesAsRead,
     sendMessage,
     sendTyping,
     typingMap,
+    isSoundMuted,
+    toggleSoundMute,
+    playNotificationSound,
   } = useSocket();
   const { addToast } = useToast();
 
@@ -365,10 +395,53 @@ export const ChatDashboardPage = () => {
       }
     };
 
+    // Real-time presence update (updates conversation, active chat header, and friends)
+    const handlePresenceUpdate = ({ userId, isOnline, lastSeenAt }) => {
+      setSelectedConversation((prev) => {
+        if (!prev || prev.recipient?.id !== userId) return prev;
+        return {
+          ...prev,
+          recipient: {
+            ...prev.recipient,
+            isOnline,
+            lastSeenAt: lastSeenAt || (isOnline ? prev.recipient.lastSeenAt : new Date().toISOString()),
+          },
+        };
+      });
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.recipient?.id === userId
+            ? {
+                ...c,
+                recipient: {
+                  ...c.recipient,
+                  isOnline,
+                  lastSeenAt: lastSeenAt || (isOnline ? c.recipient.lastSeenAt : new Date().toISOString()),
+                },
+              }
+            : c
+        )
+      );
+
+      setFriends((prev) =>
+        prev.map((f) =>
+          f.id === userId
+            ? {
+                ...f,
+                isOnline,
+                lastSeenAt: lastSeenAt || (isOnline ? f.lastSeenAt : new Date().toISOString()),
+              }
+            : f
+        )
+      );
+    };
+
     socket.on('message:new', handleNewMessage);
     socket.on('message:delivered', handleDelivered);
     socket.on('messages:read', handleMessagesRead);
     socket.on('messages:status_update', handleStatusUpdate);
+    socket.on('presence:update', handlePresenceUpdate);
     socket.on('friend:update', handleFriendUpdate);
     socket.on('friend:request:incoming', handleIncomingRequest);
     socket.on('messages:expired', handleMessagesExpired);
@@ -380,6 +453,7 @@ export const ChatDashboardPage = () => {
       socket.off('message:delivered', handleDelivered);
       socket.off('messages:read', handleMessagesRead);
       socket.off('messages:status_update', handleStatusUpdate);
+      socket.off('presence:update', handlePresenceUpdate);
       socket.off('friend:update', handleFriendUpdate);
       socket.off('friend:request:incoming', handleIncomingRequest);
       socket.off('messages:expired', handleMessagesExpired);
@@ -566,7 +640,7 @@ export const ChatDashboardPage = () => {
     return name.toLowerCase().includes(q) || username.toLowerCase().includes(q);
   });
 
-  const onlineFriends = friends.filter((f) => isUserOnline(f.id));
+  const onlineFriends = friends.filter((f) => isUserOnline(f.id) || f.isOnline);
 
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-[#f8fafc] dark:bg-[#07080c] text-slate-800 dark:text-slate-100 transition-colors select-none">
@@ -664,7 +738,9 @@ export const ChatDashboardPage = () => {
             filteredConversations.length > 0 ? (
               filteredConversations.map((conv) => {
                 const isSelected = selectedConversation?.id === conv.id;
-                const isOnline = conv.recipient ? isUserOnline(conv.recipient.id) : false;
+                const isOnline = conv.recipient
+                  ? isUserOnline(conv.recipient.id) || conv.recipient.isOnline
+                  : false;
                 const isTyping =
                   typingMap[conv.id] &&
                   typingMap[conv.id].some((u) => u.userId !== user?.id);
@@ -824,7 +900,7 @@ export const ChatDashboardPage = () => {
                 {friends.length > 0 ? (
                   <div className="space-y-1">
                     {friends.map((friend) => {
-                      const isOnline = isUserOnline(friend.id);
+                      const isOnline = isUserOnline(friend.id) || friend.isOnline;
                       return (
                         <div
                           key={friend.id}
@@ -878,13 +954,34 @@ export const ChatDashboardPage = () => {
             </div>
           </div>
 
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className="p-2 rounded-xl text-slate-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
-            title="Settings"
-          >
-            <Settings size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                toggleSoundMute();
+                addToast(
+                  isSoundMuted ? 'Notification sounds enabled' : 'Notification sounds muted',
+                  'info'
+                );
+              }}
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                isSoundMuted
+                  ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/20'
+                  : 'text-slate-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+              }`}
+              title={isSoundMuted ? 'Notification sounds muted — Click to unmute' : 'Notification sounds enabled — Click to mute'}
+              aria-label={isSoundMuted ? 'Unmute notification sounds' : 'Mute notification sounds'}
+            >
+              {isSoundMuted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+            </button>
+
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-2 rounded-xl text-slate-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
+              title="Settings"
+            >
+              <Settings size={18} />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -915,7 +1012,7 @@ export const ChatDashboardPage = () => {
                   size="md"
                   isOnline={
                     selectedConversation.recipient
-                      ? isUserOnline(selectedConversation.recipient.id)
+                      ? (isUserOnline(selectedConversation.recipient.id) || selectedConversation.recipient.isOnline)
                       : false
                   }
                 />
@@ -926,15 +1023,18 @@ export const ChatDashboardPage = () => {
                   </h2>
                   <div className="text-[11px] flex items-center gap-1.5">
                     {selectedConversation.recipient &&
-                    isUserOnline(selectedConversation.recipient.id) ? (
-                      <span className="text-emerald-500 font-medium flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    (isUserOnline(selectedConversation.recipient.id) || selectedConversation.recipient.isOnline) ? (
+                      <span className="text-emerald-500 font-semibold flex items-center gap-1.5">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                        </span>
                         Active now
                       </span>
                     ) : (
-                      <span className="text-slate-400 flex items-center gap-1">
-                        <Clock size={11} />
-                        Offline
+                      <span className="text-slate-400 dark:text-slate-500 flex items-center gap-1.5 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-600" />
+                        {formatLastSeen(selectedConversation.recipient?.lastSeenAt)}
                       </span>
                     )}
                   </div>
@@ -955,6 +1055,26 @@ export const ChatDashboardPage = () => {
                       <span>{TIMER_LABELS[selectedConversation.disappearingTimer] || selectedConversation.disappearingTimer}</span>
                     </button>
                   )}
+
+                {/* Mute / Unmute Notification Sounds Quick Button */}
+                <button
+                  onClick={() => {
+                    toggleSoundMute();
+                    addToast(
+                      isSoundMuted ? 'Notification sounds enabled' : 'Notification sounds muted',
+                      'info'
+                    );
+                  }}
+                  className={`p-2 rounded-xl transition-all cursor-pointer ${
+                    isSoundMuted
+                      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  }`}
+                  title={isSoundMuted ? 'Notification sounds muted — Click to unmute' : 'Notification sounds enabled — Click to mute'}
+                  aria-label={isSoundMuted ? 'Unmute notification sounds' : 'Mute notification sounds'}
+                >
+                  {isSoundMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                </button>
 
                 <button
                   onClick={() => setShowRightSidebar(!showRightSidebar)}
@@ -992,6 +1112,36 @@ export const ChatDashboardPage = () => {
                         transition={{ duration: 0.15 }}
                         className="absolute right-0 top-full mt-2 w-60 rounded-2xl bg-white dark:bg-[#121522] border border-slate-200 dark:border-slate-800 shadow-xl py-1.5 z-50 backdrop-blur-xl"
                       >
+                        <button
+                          onClick={() => {
+                            setShowMenuDropdown(false);
+                            toggleSoundMute();
+                            addToast(
+                              isSoundMuted ? 'Notification sounds enabled' : 'Notification sounds muted',
+                              'info'
+                            );
+                          }}
+                          className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            {isSoundMuted ? (
+                              <VolumeX size={15} className="text-amber-500" />
+                            ) : (
+                              <Volume2 size={15} className="text-violet-500" />
+                            )}
+                            <span>Notification Sounds</span>
+                          </div>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                              isSoundMuted
+                                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                            }`}
+                          >
+                            {isSoundMuted ? 'Muted' : 'On'}
+                          </span>
+                        </button>
+
                         <button
                           onClick={() => {
                             setShowMenuDropdown(false);
@@ -1315,7 +1465,10 @@ export const ChatDashboardPage = () => {
                 src={selectedConversation.recipient.avatarUrl}
                 name={selectedConversation.recipient.fullName}
                 size="xl"
-                isOnline={isUserOnline(selectedConversation.recipient.id)}
+                isOnline={
+                  isUserOnline(selectedConversation.recipient.id) ||
+                  selectedConversation.recipient.isOnline
+                }
                 className="mx-auto mb-3"
               />
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
@@ -1324,6 +1477,23 @@ export const ChatDashboardPage = () => {
               <p className="text-xs text-violet-500 font-medium">
                 @{selectedConversation.recipient.username}
               </p>
+              <div className="mt-1.5 flex items-center justify-center gap-1.5 text-xs">
+                {isUserOnline(selectedConversation.recipient.id) ||
+                selectedConversation.recipient.isOnline ? (
+                  <span className="text-emerald-500 font-semibold flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                    </span>
+                    Active now
+                  </span>
+                ) : (
+                  <span className="text-slate-400 dark:text-slate-500 flex items-center gap-1 font-medium">
+                    <Clock size={12} />
+                    {formatLastSeen(selectedConversation.recipient?.lastSeenAt)}
+                  </span>
+                )}
+              </div>
               {selectedConversation.recipient.bio && (
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 px-4 leading-relaxed">
                   {selectedConversation.recipient.bio}

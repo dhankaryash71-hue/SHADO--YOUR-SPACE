@@ -23,7 +23,7 @@ export const initSocket = (httpServer, clientOrigin) => {
   // Attach auth middleware
   io.use(socketAuthMiddleware);
 
-  io.on('connection', async (socket) => {
+  io.on('connection', (socket) => {
     const user = socket.user;
     const userId = user.id;
 
@@ -38,13 +38,13 @@ export const initSocket = (httpServer, clientOrigin) => {
     // Join personal room for private notifications
     socket.join(`user:${userId}`);
 
-    // If previously offline, mark online and broadcast presence
-    if (wasOffline) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { isOnline: true, lastSeenAt: new Date() },
-      }).catch(console.error);
+    // Send snapshot of all currently online users immediately to this client
+    socket.emit('presence:init', {
+      onlineUserIds: Array.from(activeUsers.keys()),
+    });
 
+    // If newly online, broadcast to all clients immediately
+    if (wasOffline) {
       io.emit('presence:update', {
         userId,
         isOnline: true,
@@ -52,70 +52,80 @@ export const initSocket = (httpServer, clientOrigin) => {
       });
     }
 
-    // Catch-up: When recipient connects, mark any pending SENT messages for them as DELIVERED
-    try {
-      const pendingMessages = await prisma.message.findMany({
-        where: {
-          status: 'SENT',
-          conversation: {
-            members: {
-              some: { userId },
-            },
-          },
-          senderId: { not: userId },
-        },
-        select: {
-          id: true,
-          conversationId: true,
-          senderId: true,
-        },
-      });
+    // Asynchronously update presence in DB and deliver pending messages without blocking event listener registration
+    (async () => {
+      try {
+        if (wasOffline) {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { isOnline: true, lastSeenAt: new Date() },
+          }).catch(console.error);
+        }
 
-      if (pendingMessages.length > 0) {
-        const now = new Date();
-        const pendingIds = pendingMessages.map((m) => m.id);
-        await prisma.message.updateMany({
-          where: { id: { in: pendingIds } },
-          data: {
-            status: 'DELIVERED',
-            deliveredAt: now,
+        // Catch-up: When recipient connects, mark any pending SENT messages for them as DELIVERED
+        const pendingMessages = await prisma.message.findMany({
+          where: {
+            status: 'SENT',
+            conversation: {
+              members: {
+                some: { userId },
+              },
+            },
+            senderId: { not: userId },
+          },
+          select: {
+            id: true,
+            conversationId: true,
+            senderId: true,
           },
         });
 
-        // Notify senders in real time
-        const byConversation = {};
-        for (const msg of pendingMessages) {
-          if (!byConversation[msg.conversationId]) {
-            byConversation[msg.conversationId] = {
-              senderIds: new Set(),
-              messageIds: [],
-            };
-          }
-          byConversation[msg.conversationId].senderIds.add(msg.senderId);
-          byConversation[msg.conversationId].messageIds.push(msg.id);
-        }
-
-        for (const [convId, data] of Object.entries(byConversation)) {
-          io.to(`conv:${convId}`).emit('messages:status_update', {
-            conversationId: convId,
-            messageIds: data.messageIds,
-            status: 'DELIVERED',
-            deliveredAt: now,
+        if (pendingMessages.length > 0) {
+          const now = new Date();
+          const pendingIds = pendingMessages.map((m) => m.id);
+          await prisma.message.updateMany({
+            where: { id: { in: pendingIds } },
+            data: {
+              status: 'DELIVERED',
+              deliveredAt: now,
+            },
           });
 
-          for (const sId of data.senderIds) {
-            io.to(`user:${sId}`).emit('messages:status_update', {
+          // Notify senders in real time
+          const byConversation = {};
+          for (const msg of pendingMessages) {
+            if (!byConversation[msg.conversationId]) {
+              byConversation[msg.conversationId] = {
+                senderIds: new Set(),
+                messageIds: [],
+              };
+            }
+            byConversation[msg.conversationId].senderIds.add(msg.senderId);
+            byConversation[msg.conversationId].messageIds.push(msg.id);
+          }
+
+          for (const [convId, data] of Object.entries(byConversation)) {
+            io.to(`conv:${convId}`).emit('messages:status_update', {
               conversationId: convId,
               messageIds: data.messageIds,
               status: 'DELIVERED',
               deliveredAt: now,
             });
+
+            for (const sId of data.senderIds) {
+              io.to(`user:${sId}`).emit('messages:status_update', {
+                conversationId: convId,
+                messageIds: data.messageIds,
+                status: 'DELIVERED',
+                deliveredAt: now,
+              });
+            }
           }
         }
+      } catch (err) {
+        console.error('Error in post-connection setup:', err);
       }
-    } catch (err) {
-      console.error('Error updating undelivered messages on connection:', err);
-    }
+    })();
 
     // 1. Join conversation room with authorization check & mark as read
     socket.on('conversation:join', async ({ conversationId }) => {
@@ -437,27 +447,34 @@ export const initSocket = (httpServer, clientOrigin) => {
       });
     });
 
-    // 4. Disconnect handling
-    socket.on('disconnect', async () => {
+    // 4. Presence query for refreshing online users on focus or reconnect
+    socket.on('presence:query', () => {
+      socket.emit('presence:init', {
+        onlineUserIds: Array.from(activeUsers.keys()),
+      });
+    });
+
+    // 5. Disconnect handling
+    socket.on('disconnect', () => {
       const sockets = activeUsers.get(userId);
       if (sockets) {
         sockets.delete(socket.id);
         if (sockets.size === 0) {
           activeUsers.delete(userId);
 
-          // Update user status in database
           const now = new Date();
-          await prisma.user.update({
-            where: { id: userId },
-            data: { isOnline: false, lastSeenAt: now },
-          }).catch(console.error);
-
-          // Broadcast offline presence
+          // Broadcast offline presence immediately to all connected clients
           io.emit('presence:update', {
             userId,
             isOnline: false,
             lastSeenAt: now,
           });
+
+          // Update user status in database in background
+          prisma.user.update({
+            where: { id: userId },
+            data: { isOnline: false, lastSeenAt: now },
+          }).catch(console.error);
         }
       }
     });
